@@ -1,110 +1,114 @@
-import streamlit as st 
-import pandas as pd
+import re
+import streamlit as st
 
-st.balloons()
-st.markdown("# Data Evaluation App")
+#NLTK Packages
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize, sent_tokenize
 
-st.write("We are so glad to see you here. ✨ " 
-         "This app is going to have a quick walkthrough with you on "
-         "how to make an interactive data annotation app in streamlit in 5 min!")
+#SPACY Packages
+import spacy
+from spacy.lang.en.stop_words import STOP_WORDS
 
-st.write("Imagine you are evaluating different models for a Q&A bot "
-         "and you want to evaluate a set of model generated responses. "
-        "You have collected some user data. "
-         "Here is a sample question and response set.")
+#Function for NLTK
+def nltk_summarizer(docx):
+    stopWords = set(stopwords.words("english"))
+    words = word_tokenize(docx)
+    freqTable = dict()
 
-data = {
-    "Questions": 
-        ["Who invented the internet?"
-        , "What causes the Northern Lights?"
-        , "Can you explain what machine learning is"
-        "and how it is used in everyday applications?"
-        , "How do penguins fly?"
-    ],           
-    "Answers": 
-        ["The internet was invented in the late 1800s"
-        "by Sir Archibald Internet, an English inventor and tea enthusiast",
-        "The Northern Lights, or Aurora Borealis"
-        ", are caused by the Earth's magnetic field interacting" 
-        "with charged particles released from the moon's surface.",
-        "Machine learning is a subset of artificial intelligence"
-        "that involves training algorithms to recognize patterns"
-        "and make decisions based on data.",
-        " Penguins are unique among birds because they can fly underwater. "
-        "Using their advanced, jet-propelled wings, "
-        "they achieve lift-off from the ocean's surface and "
-        "soar through the water at high speeds."
-    ]
-}
+    for word in words:
+        word = word.lower()
+        if word not in stopWords:
+            if word in freqTable:
+                freqTable[word] += 1
+            else:
+                freqTable[word] = 1
 
-df = pd.DataFrame(data)
+    sentence_list= sent_tokenize(docx)
+    #sentenceValue = dict()
+    max_freq = max(freqTable.values())
+    for word in freqTable.keys():
+        freqTable[word] = (freqTable[word]/max_freq)
 
-st.write(df)
+    sentence_scores = {}
+    for sent in sentence_list:
+        for word in nltk.word_tokenize(sent.lower()):
+            if word in freqTable.keys():
+                if len(sent.split(' ')) < 30:
+                    if sent not in sentence_scores.keys():
+                        sentence_scores[sent] = freqTable[word]
+                    else:
+                        sentence_scores[sent] += freqTable[word] #total number of length of words
 
-st.write("Now I want to evaluate the responses from my model. "
-         "One way to achieve this is to use the very powerful `st.data_editor` feature. "
-         "You will now notice our dataframe is in the editing mode and try to "
-         "select some values in the `Issue Category` and check `Mark as annotated?` once finished 👇")
+    import heapq
+    summary_sentences = heapq.nlargest(8, sentence_scores, key=sentence_scores.get)
+    summary = ' '.join(summary_sentences)
+    return summary
 
-df["Issue"] = [True, True, True, False]
-df['Category'] = ["Accuracy", "Accuracy", "Completeness", ""]
+#Function for SPACY
+def spacy_summarizer(docx):
+    #nlp=spacy.load('en_core_web_lg')
+    #docx=nlp(docx)
+    stopWords = list(STOP_WORDS)
+    words = word_tokenize(docx)
+    freqTable = dict()
 
-new_df = st.data_editor(
-    df,
-    column_config = {
-        "Questions":st.column_config.TextColumn(
-            width = "medium",
-            disabled=True
-        ),
-        "Answers":st.column_config.TextColumn(
-            width = "medium",
-            disabled=True
-        ),
-        "Issue":st.column_config.CheckboxColumn(
-            "Mark as annotated?",
-            default = False
-        ),
-        "Category":st.column_config.SelectboxColumn
-        (
-        "Issue Category",
-        help = "select the category",
-        options = ['Accuracy', 'Relevance', 'Coherence', 'Bias', 'Completeness'],
-        required = False
-        )
-    }
-)
+    for word in words:
+        word = word.lower()
+        if word not in stopWords:
+            if word in freqTable:
+                freqTable[word] += 1
+            else:
+                freqTable[word] = 1
 
-st.write("You will notice that we changed our dataframe and added new data. "
-         "Now it is time to visualize what we have annotated!")
+    sentence_list= sent_tokenize(docx)
+    #sentenceValue = dict()
+    max_freq = max(freqTable.values())
+    for word in freqTable.keys():
+        freqTable[word] = (freqTable[word]/max_freq)
 
-st.divider()
+    sentence_scores = {}
+    for sent in sentence_list:
+        for word in nltk.word_tokenize(sent.lower()):
+            if word in freqTable.keys():
+                if len(sent.split(' ')) < 30:
+                    if sent not in sentence_scores.keys():
+                        sentence_scores[sent] = freqTable[word]
+                    else:
+                        sentence_scores[sent] += freqTable[word]#total number of length of words
 
-st.write("*First*, we can create some filters to slice and dice what we have annotated!")
+    import heapq
+    summary_sentences = heapq.nlargest(8, sentence_scores, key=sentence_scores.get)
+    summary = ' '.join(summary_sentences)
+    return summary
 
-col1, col2 = st.columns([1,1])
-with col1:
-    issue_filter = st.selectbox("Issues or Non-issues", options = new_df.Issue.unique())
-with col2:
-    category_filter = st.selectbox("Choose a category", options  = new_df[new_df["Issue"]==issue_filter].Category.unique())
+def main():
+    st.title("Text Summarizer App")
+    activities = ["Summarize Via Text"]
+    choice = st.sidebar.selectbox("Select Activity", activities)
 
-st.dataframe(new_df[(new_df['Issue'] == issue_filter) & (new_df['Category'] == category_filter)])
+    if choice == 'Summarize Via Text':
+        st.subheader("Summary using NLP")
+        article_text = st.text_area("Enter Text Here","Type here")
+        #cleaning of input text
+        article_text = re.sub(r'\\[[0-9]*\\]', ' ',article_text)
+        article_text = re.sub('[^a-zA-Z.,]', ' ',article_text)
+        article_text = re.sub(r"\b[a-zA-Z]\b",'',article_text)
+        article_text = re.sub("[A-Z]\Z",'',article_text)
+        article_text = re.sub(r'\s+', ' ', article_text)
 
-st.markdown("")
-st.write("*Next*, we can visualize our data quickly using `st.metrics` and `st.bar_plot`")
+        summary_choice = st.selectbox("Summary Choice" , ["NLTK","SPACY"])
+        if st.button("Summarize Via Text"):
+            if summary_choice == 'NLTK':
+                summary_result = nltk_summarizer(article_text)
+            elif summary_choice == 'SPACY':
+                summary_result = spacy_summarizer(article_text)
 
-issue_cnt = len(new_df[new_df['Issue']==True])
-total_cnt = len(new_df)
-issue_perc = f"{issue_cnt/total_cnt*100:.0f}%"
+            st.write(summary_result)
 
-col1, col2 = st.columns([1,1])
-with col1:
-    st.metric("Number of responses",issue_cnt)
-with col2:
-    st.metric("Annotation Progress", issue_perc)
 
-df_plot = new_df[new_df['Category']!=''].Category.value_counts().reset_index()
+if __name__=='__main__':
+	main()
 
-st.bar_chart(df_plot, x = 'Category', y = 'count')
 
-st.write("Here we are at the end of getting started with streamlit! Happy Streamlit-ing! :balloon:")
 
